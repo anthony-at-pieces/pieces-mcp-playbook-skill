@@ -17,14 +17,37 @@ Pieces MCP exposes **30+ tools** organized into five categories (see Tool Catalo
 ## What this skill assumes
 
 - PiecesOS is installed + running and LTM is enabled (see `references/PREREQS.md`).
-- Your MCP host is pointed at a Pieces MCP SSE URL. Verified paths: `http://<host>:39300/model_context_protocol/2025-03-26/sse` (Pieces 12.3.11) or `.../2024-11-05/sse` (older versions).
-- **Network note:** Pieces MCP binds to **127.0.0.1 only**. If connecting from another machine (e.g., WSL to Aurora at 192.168.86.34), a Windows port proxy is required on the Pieces host:
+- Your MCP host is pointed at a Pieces MCP URL. Two connectivity modes are supported:
+  - **Local/LAN** (SSE endpoint): `http://<host>:39300/model_context_protocol/2025-03-26/sse` (Pieces 12.3.11) or `.../2024-11-05/sse` (older versions).
+  - **Cloud/remote** (MCP-only, no SSE): `<tunnel-url>/model_context_protocol/2025-03-26/mcp` -- use this when PiecesOS is on a different network, exposed via ngrok or any HTTPS tunnel. See `references/CLOUD_CONNECTIVITY.md` for full setup.
+- **Network note (LAN):** Pieces MCP binds to **127.0.0.1 only**. If connecting from another machine on the same LAN (e.g., WSL to Aurora at 192.168.86.34), a Windows port proxy is required on the Pieces host:
   ```powershell
   netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
   ```
+- **Network note (cloud):** If PiecesOS is on a different network entirely, use an HTTPS tunnel (ngrok, custom tunnel, any HTTPS proxy forwarding to localhost:39300). The endpoint path is `/mcp` (not `/sse`). See `references/CLOUD_CONNECTIVITY.md`.
 - Your environment provides some way to call MCP tools -- either directly or via the included RPC script.
 
 If you are unsure what tools exist, run: `python scripts/pieces_mcp_rpc.py --host <host> --mcp-version 2025-03-26 --list-tools`
+
+---
+
+## Connectivity Modes
+
+### Mode 1: Local/LAN (SSE)
+The default mode. PiecesOS and the MCP client are on the same network (or same machine). Uses the `/sse` endpoint. Covered by the existing workflow below.
+
+### Mode 2: Cloud/Remote via HTTPS Tunnel (MCP-only)
+PiecesOS runs on a remote machine (different network). An HTTPS tunnel (ngrok, Cloudflare Tunnel, etc.) exposes port 39300. The client connects over the public internet using the `/mcp` endpoint (NOT `/sse`).
+
+**Key distinction:** `/mcp` is a direct JSON-RPC endpoint. `/sse` requires a long-lived Server-Sent Events connection which does not tunnel well through HTTPS proxies. Always use `/mcp` for cloud/remote connections.
+
+**Quick ngrok setup on the PiecesOS machine:**
+```bash
+ngrok http 39300
+```
+Then use the forwarding URL: `https://SOMETHING.ngrok-free.dev/model_context_protocol/2025-03-26/mcp`
+
+For full cloud setup instructions, session management, and troubleshooting, see `references/CLOUD_CONNECTIVITY.md`.
 
 ---
 
@@ -237,6 +260,13 @@ When something fails, do this in order:
 
 This skill includes known failure patterns reported publicly (e.g., retrieval tool failing while memory creation works) to help you design graceful degradation.
 
+5. **Cloud/tunnel connectivity issues** -- if connecting via ngrok or another HTTPS tunnel:
+    - **Sanity check:** `curl -i "<tunnel-url>/model_context_protocol/2025-03-26/mcp"` should return HTTP 400 with `"mcp-session-id header or sessionId query parameter is required"`. This 400 is GOOD -- it means the route exists and the MCP server is alive.
+    - **If you get 404/502/HTML/timeout:** The tunnel is down or PiecesOS is not running. Ask the human to restart both.
+    - **If you get HTTP 500 on initialize:** Ensure you're using file-based JSON (`--data-binary @file.json`), string JSON-RPC IDs (`"id": "1"` not `"id": 1`), and both `Content-Type: application/json` and `Accept: application/json, text/event-stream` headers.
+    - **If tools seem missing:** Confirm the MCP URL uses `/mcp` not `/sse`. For MCPorter/mcp-remote setups, ensure `mcp-remote` is installed (`npm install -g mcp-remote@0.1.38`) and the gateway was restarted after config changes.
+    - See `references/CLOUD_CONNECTIVITY.md` Section 9 for the full troubleshooting matrix.
+
 ---
 
 ## Files in this skill
@@ -244,6 +274,7 @@ This skill includes known failure patterns reported publicly (e.g., retrieval to
 ### References (read when needed)
 - `references/PREREQS.md` — enabling LTM + basic host setup
 - `references/MCP_ENDPOINTS.md` — endpoints, message flow, and port discovery
+- `references/CLOUD_CONNECTIVITY.md` — ngrok/tunnel setup, MCP-only endpoint, session management, and remote troubleshooting
 - `references/QUERY_PLAYBOOK.md` — query shaping patterns + examples
 - `references/WRITE_PLAYBOOK.md` — write-back patterns + memory templates
 - `references/TROUBLESHOOTING.md` — failure modes + how to surface actionable errors

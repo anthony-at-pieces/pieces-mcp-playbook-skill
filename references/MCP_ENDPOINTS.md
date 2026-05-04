@@ -1,15 +1,18 @@
 # Pieces MCP endpoints + message flow
 
-Pieces MCP exposes an SSE endpoint and a messages endpoint under a versioned MCP path.
+Pieces MCP exposes two types of endpoint under a versioned MCP path: an SSE stream (for local/LAN use) and a direct JSON-RPC endpoint (for cloud/remote use via HTTPS tunnels).
 
 Typical base URL (port can vary):
-- `http://127.0.0.1:39300`
+- Local: `http://127.0.0.1:39300`
+- Cloud/remote: `https://<tunnel-host>` (e.g., `https://abc123.ngrok-free.dev`)
 
 > **Binding note:** Pieces MCP binds to **127.0.0.1 only** (loopback). It does NOT listen on 0.0.0.0 or the LAN interface. To reach it from another machine (e.g., WSL -> Aurora), set up a Windows port proxy on the Pieces host:
 > ```powershell
 > # Elevated PowerShell on the Windows host
 > netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
 > ```
+>
+> For cross-network access (PiecesOS on a different network), use an HTTPS tunnel (ngrok, Cloudflare Tunnel, etc.) instead. See `references/CLOUD_CONNECTIVITY.md`.
 
 ## MCP protocol versions
 
@@ -40,6 +43,25 @@ The client sends JSON-RPC requests (e.g., `tools/list`, `tools/call`) to this en
 
 ### Version endpoint
 - `/.well-known/version` -- returns the Pieces version as plain text (e.g., `12.3.11`)
+
+### Direct MCP endpoint (cloud/remote, JSON-RPC)
+- `/model_context_protocol/2025-03-26/mcp`
+
+This is a direct JSON-RPC endpoint that does NOT use SSE. Use this when connecting over an HTTPS tunnel (ngrok, Cloudflare Tunnel, custom proxy). The client sends JSON-RPC requests via POST and receives JSON-RPC responses directly -- no SSE handshake needed.
+
+**Session management is required** -- the client must:
+1. Send an `initialize` request with a client-generated session ID header
+2. Extract the server-assigned `mcp-session-id` from the response headers (a 13-digit timestamp like `1774202062499`)
+3. Use that server-assigned session ID for all subsequent requests
+
+**Required headers for all requests:**
+```
+Content-Type: application/json
+Accept: application/json, text/event-stream
+mcp-session-id: <SESSION_ID>
+```
+
+See `references/CLOUD_CONNECTIVITY.md` for the full curl flow and session management details.
 
 ## Minimal curl flow (debugging)
 

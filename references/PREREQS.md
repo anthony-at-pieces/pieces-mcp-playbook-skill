@@ -40,7 +40,48 @@ Reference:
 
 ## 3) Port awareness
 Most examples use `localhost:39300`, but your local port can vary depending on configuration.
-If your host can’t connect, use `scripts/pieces_mcp_scan.py` to discover the port and confirm endpoints.
+If your host can't connect, use `scripts/pieces_mcp_scan.py` to discover the port and confirm endpoints.
+
+## 3a) Cloud/Remote connectivity (optional)
+
+If PiecesOS is on a different network from the MCP client, you need an HTTPS tunnel:
+
+### ngrok (most common)
+1. Install ngrok: https://ngrok.com/download
+2. Sign up and configure authtoken: `ngrok config add-authtoken <token>`
+3. On the PiecesOS machine, start the tunnel:
+   ```bash
+   ngrok http 39300
+   ```
+4. Copy the forwarding URL (e.g., `https://abc123.ngrok-free.dev`)
+5. The MCP endpoint is: `<forwarding-url>/model_context_protocol/2025-03-26/mcp`
+
+### Other tunnel options
+- **Cloudflare Tunnel:** `cloudflared tunnel --url http://localhost:39300`
+- **Custom domain/proxy:** Any HTTPS proxy that forwards to `localhost:39300` on the PiecesOS machine
+
+### mcp-remote (bridge for MCP clients)
+If your MCP client (VS Code, Claude Desktop, etc.) needs a stdio-based bridge to the remote endpoint:
+
+```bash
+npm install -g mcp-remote@0.1.38
+```
+
+Then in your client's MCP config:
+```json
+{
+  "mcpServers": {
+    "pieces": {
+      "command": "mcp-remote",
+      "args": ["https://YOUR-TUNNEL/model_context_protocol/2025-03-26/mcp"]
+    }
+  }
+}
+```
+
+`mcp-remote` handles session management (initialize, session-id extraction, headers) automatically. You do not need to manually manage sessions when using this bridge.
+
+See `references/CLOUD_CONNECTIVITY.md` for the full setup guide.
 
 
 ## 4) Suggested environment variables (for wrappers/scripts)

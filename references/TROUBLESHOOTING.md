@@ -86,9 +86,55 @@ Reference:
 - https://docs.pieces.app/products/cli/copilot/chat
 
 
-## 7) Cursor “red JSON blob” in MCP Settings (often harmless)
-Pieces documents a Cursor UI quirk where MCP Settings may show a raw JSON payload or “unknown message ID” error even when tool calls work.
+## 7) Cursor "red JSON blob" in MCP Settings (often harmless)
+Pieces documents a Cursor UI quirk where MCP Settings may show a raw JSON payload or "unknown message ID" error even when tool calls work.
 The chat pane is the source of truth if queries succeed.
 
 Reference:
 - https://docs.pieces.app/products/mcp/cursor
+
+## 8) Cloud/tunnel connection failures (ngrok, HTTPS proxy)
+
+When connecting to Pieces MCP over an HTTPS tunnel (ngrok, Cloudflare Tunnel, custom proxy), different failure modes apply:
+
+### 8a) MCP URL sanity check fails (404/502/timeout)
+`curl -i "<tunnel-url>/model_context_protocol/2025-03-26/mcp"` returns 404, 502, HTML, or times out.
+
+**Fix:** The tunnel or PiecesOS is down. Ask the human to:
+1. Confirm PiecesOS is running on the remote machine
+2. Confirm the tunnel is still running (`ngrok http 39300` -- check the dashboard)
+3. If ngrok was restarted, the URL changes -- get a fresh one
+4. Rebuild the MCP URL and re-test
+
+### 8b) Initialize returns HTTP 500 (Internal Server Error)
+**Fix:** Check these common causes:
+1. **Shell quoting issues:** Use file-based JSON (`--data-binary @init.json`) instead of inline `-d '{...}'`
+2. **Wrong JSON-RPC ID type:** Use string `"id": "1"`, not integer `"id": 1`
+3. **Missing headers:** Both `Content-Type: application/json` AND `Accept: application/json, text/event-stream` are required
+4. **Stale session:** If re-initializing, use a fresh client session ID in the `mcp-session-id` header
+
+### 8c) Tools seem missing or unresponsive after MCPorter config
+**Fix:**
+1. Confirm `mcp-remote` is installed: `npm list -g mcp-remote`
+2. If missing: `npm install -g mcp-remote@0.1.38`
+3. Confirm the MCP config uses `/mcp` not `/sse` for cloud connections
+4. Restart the gateway after editing config
+5. Test directly with curl (see `references/CLOUD_CONNECTIVITY.md`) to isolate whether the issue is the bridge or the tunnel
+
+### 8d) ask_pieces_ltm timeouts or vague answers over tunnel
+**Fix:** Same as local troubleshooting (narrow by time/topic), but also:
+1. Test with direct curl to isolate MCPorter vs tunnel issues
+2. Confirm the tunnel is still running (human-side)
+3. Check for latency -- tunnel connections are slower than LAN
+
+### 8e) Getting raw JSON instead of natural language
+This is NOT a problem. Raw JSON responses (`summaries[]`, `events[]` arrays) are the expected format. The agent parses and synthesizes them for the human.
+
+## 9) Tunnel URL changes (ngrok free tier)
+
+ngrok free tier assigns a random URL each time it starts. If the agent loses connection to Pieces MCP:
+1. The old tunnel URL is stale
+2. Ask the human to check ngrok and paste the current forwarding URL
+3. Update the MCP config and restart
+
+For stable URLs, use ngrok's paid tier (static domains) or a custom tunnel/proxy.
