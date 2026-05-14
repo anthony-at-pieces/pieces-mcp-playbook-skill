@@ -1,6 +1,6 @@
 # Pieces MCP endpoints + message flow
 
-Pieces MCP exposes two types of endpoint under a versioned MCP path: an SSE stream (for local/LAN use) and a direct JSON-RPC endpoint (for cloud/remote use via HTTPS tunnels).
+Pieces MCP exposes three types of endpoint under a versioned MCP path: an SSE stream (for local/LAN use), a Messages endpoint (companion to SSE), and a direct JSON-RPC/StreamableHTTP endpoint (recommended for local/LAN and required for cloud/remote use via HTTPS tunnels).
 
 Typical base URL (port can vary):
 - Local: `http://127.0.0.1:39300`
@@ -44,10 +44,12 @@ The client sends JSON-RPC requests (e.g., `tools/list`, `tools/call`) to this en
 ### Version endpoint
 - `/.well-known/version` -- returns the Pieces version as plain text (e.g., `12.3.11`)
 
-### Direct MCP endpoint (cloud/remote, JSON-RPC)
+### StreamableHTTP endpoint (recommended for local/LAN, required for cloud/remote)
 - `/model_context_protocol/2025-03-26/mcp`
 
-This is a direct JSON-RPC endpoint that does NOT use SSE. Use this when connecting over an HTTPS tunnel (ngrok, Cloudflare Tunnel, custom proxy). The client sends JSON-RPC requests via POST and receives JSON-RPC responses directly -- no SSE handshake needed.
+This is a direct JSON-RPC endpoint that does NOT use SSE. **Recommended over SSE for all connections** -- it uses short-lived HTTP requests that release ephemeral ports immediately, avoiding the port exhaustion risk of long-lived SSE connections. Use this for both local/LAN and cloud/remote connections.
+
+For cloud/remote: Connect over an HTTPS tunnel (ngrok, Cloudflare Tunnel, custom proxy). The client sends JSON-RPC requests via POST and receives JSON-RPC responses directly -- no SSE handshake needed.
 
 **Session management is required** -- the client must:
 1. Send an `initialize` request with a client-generated session ID header

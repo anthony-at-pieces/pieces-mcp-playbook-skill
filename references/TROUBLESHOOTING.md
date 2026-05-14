@@ -138,3 +138,30 @@ ngrok free tier assigns a random URL each time it starts. If the agent loses con
 3. Update the MCP config and restart
 
 For stable URLs, use ngrok's paid tier (static domains) or a custom tunnel/proxy.
+
+## 10) Port exhaustion from many SSE connections
+
+If you see `EADDRINUSE`, `connect ECONNREFUSED` on the MCP port while PiecesOS is confirmed running, you may have exhausted the Windows ephemeral port range.
+
+Each SSE connection holds a TCP port open for the session lifetime. Agents that open a new connection per tool call (or run multiple concurrent instances) can hit this limit quickly.
+
+**Check:**
+```powershell
+# Count connections to MCP port
+netstat -ano | Select-String ":39300" | Measure-Object
+# Show dynamic port range
+netsh int ipv4 show dynamicport tcp
+```
+
+**Fixes:**
+1. Prefer the StreamableHTTP endpoint (`/model_context_protocol/2025-03-26/mcp`) which releases ports after each response.
+2. Widen the dynamic port range (elevated PowerShell): `netsh int ipv4 set dynamicport tcp start=10000 num=55535`
+3. Reuse sessions instead of opening new SSE connections per call.
+
+## 11) Pieces Docs MCP -- separate from local LTM server
+
+The Pieces Docs MCP (`https://docs.pieces.app/api/mcp`) is a **remote server** for searching official documentation. It does NOT connect to your local PiecesOS instance or LTM data. If you need LTM workstream summaries, use the local MCP server at `localhost:39300`. If you need docs about Pieces features/setup, use the remote Docs MCP.
+
+## 12) SSE endpoint timing out from WSL
+
+When running from WSL2 in default NAT networking mode, the SSE endpoint (`/2024-11-05/sse`) may time out because long-lived connections are unreliable across the WSL-Windows network boundary. Use the StreamableHTTP endpoint (`/2025-03-26/mcp`) instead, which uses short-lived HTTP requests that are more tolerant of network latency.

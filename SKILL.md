@@ -1,11 +1,11 @@
 ---
 name: pieces-mcp-playbook
-description: Connect to the Pieces MCP server (SSE) and interact with the full Pieces data plane -- LTM queries, targeted full-text and vector search across workstream events/summaries/conversations/annotations/tags/websites, batch snapshot retrieval, and memory creation. Verified against Pieces 12.3.11.
+description: Connect to the Pieces MCP server (SSE or StreamableHTTP) and interact with the full Pieces data plane -- LTM queries, targeted full-text and vector search across workstream events/summaries/conversations/annotations/tags/websites, batch snapshot retrieval, and memory creation. Also covers the remote Pieces Docs MCP for querying official documentation. Verified against Pieces 12.3.11.
 license: MIT
-compatibility: Any Agent Skills host that can call MCP tools and/or run local scripts; assumes PiecesOS exposes MCP on localhost or LAN (commonly port 39300) via an SSE endpoint.
+compatibility: Any Agent Skills host that can call MCP tools and/or run local scripts; assumes PiecesOS exposes MCP on localhost or LAN (commonly port 39300) via SSE or StreamableHTTP endpoints. Also supports remote Pieces Docs MCP for documentation queries.
 metadata:
   author: anthony-demo
-  version: "2.0"
+  version: "3.0"
 ---
 
 # Pieces MCP Playbook
@@ -17,8 +17,9 @@ Pieces MCP exposes **30+ tools** organized into five categories (see Tool Catalo
 ## What this skill assumes
 
 - PiecesOS is installed + running and LTM is enabled (see `references/PREREQS.md`).
-- Your MCP host is pointed at a Pieces MCP URL. Two connectivity modes are supported:
+- Your MCP host is pointed at a Pieces MCP URL. Three connectivity modes are supported:
   - **Local/LAN** (SSE endpoint): `http://<host>:39300/model_context_protocol/2025-03-26/sse` (Pieces 12.3.11) or `.../2024-11-05/sse` (older versions).
+  - **Local/LAN** (StreamableHTTP -- recommended over SSE): `http://<host>:39300/model_context_protocol/2025-03-26/mcp`. Uses short-lived HTTP requests instead of long-lived SSE connections. Releases ephemeral ports immediately. Prefer this when your client supports it.
   - **Cloud/remote** (MCP-only, no SSE): `<tunnel-url>/model_context_protocol/2025-03-26/mcp` -- use this when PiecesOS is on a different network, exposed via ngrok or any HTTPS tunnel. See `references/CLOUD_CONNECTIVITY.md` for full setup.
 - **Network note (LAN):** Pieces MCP binds to **127.0.0.1 only**. If connecting from another machine on the same LAN (e.g., WSL to Aurora at 192.168.86.34), a Windows port proxy is required on the Pieces host:
   ```powershell
@@ -36,7 +37,15 @@ If you are unsure what tools exist, run: `python scripts/pieces_mcp_rpc.py --hos
 ### Mode 1: Local/LAN (SSE)
 The default mode. PiecesOS and the MCP client are on the same network (or same machine). Uses the `/sse` endpoint. Covered by the existing workflow below.
 
-### Mode 2: Cloud/Remote via HTTPS Tunnel (MCP-only)
+### Mode 2: Local/LAN (StreamableHTTP -- recommended)
+Same network setup as Mode 1, but uses the `/mcp` endpoint with short-lived HTTP requests. No long-lived SSE connections, so no ephemeral port exhaustion risk. Uses session management via `mcp-session-id` header. Prefer this over SSE when your client supports it.
+
+**Protocol flow (3 steps):**
+1. **Initialize** — POST with `method: "initialize"`, capture `mcp-session-id` from response headers.
+2. **Initialized notification** — POST with `method: "notifications/initialized"` using the session ID.
+3. **Call tools** — POST with `method: "tools/call"` using the session ID.
+
+### Mode 3: Cloud/Remote via HTTPS Tunnel (MCP-only)
 PiecesOS runs on a remote machine (different network). An HTTPS tunnel (ngrok, Cloudflare Tunnel, etc.) exposes port 39300. The client connects over the public internet using the `/mcp` endpoint (NOT `/sse`).
 
 **Key distinction:** `/mcp` is a direct JSON-RPC endpoint. `/sse` requires a long-lived Server-Sent Events connection which does not tunnel well through HTTPS proxies. Always use `/mcp` for cloud/remote connections.
@@ -51,7 +60,39 @@ For full cloud setup instructions, session management, and troubleshooting, see 
 
 ---
 
-## Core concepts (don’t skip)
+## Pieces Docs MCP (Remote)
+
+Pieces publishes a **remote MCP server** for querying official documentation. This is separate from the local PiecesOS MCP server (which serves LTM data). Use it to look up setup guides, feature docs, and troubleshooting steps from docs.pieces.app.
+
+### Configuration
+
+```json
+{
+  "mcpServers": {
+    "Pieces Docs": {
+      "url": "https://docs.pieces.app/api/mcp",
+      "headers": {}
+    }
+  }
+}
+```
+
+### Available tools
+
+- **`search_docs`** — keyword search across all documentation. Input: `{"query": "..."}`.
+- **`read_page`** — read full content of a specific docs page. Input: `{"path": "/products/mcp"}`.
+- **`list_sections`** — list all documentation sections and their pages.
+- **`get_started`** — quickstart info for new Pieces users.
+
+### When to use it
+
+- To look up the latest Pieces MCP configuration instructions (endpoint URLs, port discovery, supported transports).
+- To verify current docs match what this skill documents (the skill may lag behind product changes).
+- To help users troubleshoot setup issues by searching docs for error messages or feature names.
+
+---
+
+## Core concepts (don't skip)
 
 ### 1) Retrieval is *not* the answer
 Pieces MCP retrieval returns **context artifacts**, often as **JSON designed for an LLM to process**, not to show to a human verbatim. Your job is to:
@@ -267,6 +308,27 @@ This skill includes known failure patterns reported publicly (e.g., retrieval to
     - **If tools seem missing:** Confirm the MCP URL uses `/mcp` not `/sse`. For MCPorter/mcp-remote setups, ensure `mcp-remote` is installed (`npm install -g mcp-remote@0.1.38`) and the gateway was restarted after config changes.
     - See `references/CLOUD_CONNECTIVITY.md` Section 9 for the full troubleshooting matrix.
 
+6. **Port exhaustion from long-lived SSE connections.** Each SSE connection to the Pieces MCP server holds an ephemeral TCP port open for the duration of the session. If your agent opens many SSE connections without closing them (e.g., one per tool call, or multiple concurrent agent instances), you can exhaust the Windows dynamic port range. Symptoms: `EADDRINUSE`, `connect ECONNREFUSED` despite PiecesOS running, or new connections failing while existing ones still work.
+
+    **Diagnosis (run from PowerShell):**
+    ```powershell
+    # Check how many connections to the MCP port are open
+    netstat -ano | Select-String ":39300" | Measure-Object
+    # Check the dynamic port range
+    netsh int ipv4 show dynamicport tcp
+    ```
+
+    **Fix — widen the dynamic port range:**
+    ```powershell
+    # Requires elevated PowerShell
+    netsh int ipv4 set dynamicport tcp start=10000 num=55535
+    # Reboot or restart networking for it to take full effect
+    ```
+
+    **Fix — prefer StreamableHTTP over SSE.** The StreamableHTTP endpoint (`/model_context_protocol/2025-03-26/mcp`) uses short-lived request-response connections that release ports immediately. If your client supports it, prefer StreamableHTTP to avoid port exhaustion entirely.
+
+    **Fix — reuse sessions.** Rather than opening a new SSE connection per tool call, maintain a single long-lived session and multiplex tool calls over it.
+
 ---
 
 ## Files in this skill
@@ -283,4 +345,7 @@ This skill includes known failure patterns reported publicly (e.g., retrieval to
 ### Scripts (run when needed)
 - `scripts/pieces_mcp_rpc.py` — list tools, call tools, and capture raw responses over SSE
 - `scripts/pieces_mcp_scan.py` — find a working Pieces MCP port on localhost
-- `scripts/pieces_mcp_smoke_test.py` — end-to-end “list tools → retrieve → write” test (when tools are available)
+- `scripts/pieces_mcp_smoke_test.py` — end-to-end "list tools -> retrieve -> write" test (when tools are available)
+
+### Additional MCP servers
+- **Pieces Docs MCP** — remote MCP at `https://docs.pieces.app/api/mcp`. Provides `search_docs`, `read_page`, `list_sections`, `get_started`. Use for documentation lookup, not LTM queries.
