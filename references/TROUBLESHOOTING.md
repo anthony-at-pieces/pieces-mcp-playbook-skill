@@ -139,11 +139,13 @@ ngrok free tier assigns a random URL each time it starts. If the agent loses con
 
 For stable URLs, use ngrok's paid tier (static domains) or a custom tunnel/proxy.
 
-## 10) Port exhaustion from many SSE connections
+## 10) Port/socket exhaustion from SSE connections + netsh port-proxy (real incident: May 11, 2026)
 
-If you see `EADDRINUSE`, `connect ECONNREFUSED` on the MCP port while PiecesOS is confirmed running, you may have exhausted the Windows ephemeral port range.
+If you see `connect ECONNREFUSED` on the MCP port while PiecesOS is confirmed running, you may have exhausted the Windows ephemeral port range. This is an **environmental issue, not a Pieces regression**.
 
-Each SSE connection holds a TCP port open for the session lifetime. Agents that open a new connection per tool call (or run multiple concurrent instances) can hit this limit quickly.
+Each SSE connection holds a TCP port open for the session lifetime. If you are also running `netsh interface portproxy` rules (e.g., forwarding a port for RDP), those proxies consume additional sockets. Combined with multiple SSE-based agent sessions, this can exhaust the default Windows dynamic port range.
+
+**Confirmed root cause:** A `netsh` port-proxy forwarding port `39301` to `39334` for an RDP window was consuming sockets alongside long-lived SSE connections. Each SSE session held a port open for its full lifetime, and the proxy rules added more. The default Windows dynamic port range was too narrow to sustain both.
 
 **Check:**
 ```powershell
@@ -151,12 +153,16 @@ Each SSE connection holds a TCP port open for the session lifetime. Agents that 
 netstat -ano | Select-String ":39300" | Measure-Object
 # Show dynamic port range
 netsh int ipv4 show dynamicport tcp
+# List all portproxy rules (look for stale ones)
+netsh interface portproxy show all
 ```
 
 **Fixes:**
-1. Prefer the StreamableHTTP endpoint (`/model_context_protocol/2025-03-26/mcp`) which releases ports after each response.
+1. Clean up stale proxy rules: `netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=39301`
 2. Widen the dynamic port range (elevated PowerShell): `netsh int ipv4 set dynamicport tcp start=10000 num=55535`
-3. Reuse sessions instead of opening new SSE connections per call.
+3. Extend request timeout from 10 to 15 minutes to reduce need for additional connections.
+4. Prefer the StreamableHTTP endpoint (`/model_context_protocol/2025-03-26/mcp`) which releases ports after each response.
+5. Reuse sessions instead of opening new SSE connections per call.
 
 ## 11) Pieces Docs MCP -- separate from local LTM server
 

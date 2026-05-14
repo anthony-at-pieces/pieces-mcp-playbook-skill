@@ -308,7 +308,11 @@ This skill includes known failure patterns reported publicly (e.g., retrieval to
     - **If tools seem missing:** Confirm the MCP URL uses `/mcp` not `/sse`. For MCPorter/mcp-remote setups, ensure `mcp-remote` is installed (`npm install -g mcp-remote@0.1.38`) and the gateway was restarted after config changes.
     - See `references/CLOUD_CONNECTIVITY.md` Section 9 for the full troubleshooting matrix.
 
-6. **Port exhaustion from long-lived SSE connections.** Each SSE connection to the Pieces MCP server holds an ephemeral TCP port open for the duration of the session. If your agent opens many SSE connections without closing them (e.g., one per tool call, or multiple concurrent agent instances), you can exhaust the Windows dynamic port range. Symptoms: `EADDRINUSE`, `connect ECONNREFUSED` despite PiecesOS running, or new connections failing while existing ones still work.
+6. **Port/socket exhaustion (real incident: May 11, 2026).** Each SSE connection to the Pieces MCP server holds a TCP port open for the entire session lifetime. If you are also running `netsh interface portproxy` rules (e.g., forwarding a port for RDP), those proxies consume additional sockets. Combined with multiple SSE-based agent sessions, this can exhaust the Windows ephemeral port range. This is an **environmental issue, not a Pieces regression**.
+
+    **Symptoms:** `connect ECONNREFUSED` despite PiecesOS running, persistent disconnects from Pieces OS and Claude Desktop, new connections failing while existing ones still work.
+
+    **Root cause (confirmed):** A `netsh` port-proxy forwarding port `39301` to `39334` for an RDP window was consuming sockets alongside long-lived SSE connections. Each SSE session held a port open for its full lifetime, and the proxy rules added more. The default Windows dynamic port range was too narrow to sustain both.
 
     **Diagnosis (run from PowerShell):**
     ```powershell
@@ -316,6 +320,14 @@ This skill includes known failure patterns reported publicly (e.g., retrieval to
     netstat -ano | Select-String ":39300" | Measure-Object
     # Check the dynamic port range
     netsh int ipv4 show dynamicport tcp
+    # List all portproxy rules (look for stale ones)
+    netsh interface portproxy show all
+    ```
+
+    **Fix — clean up stale proxy rules:**
+    ```powershell
+    # Remove any portproxy rules you no longer need
+    netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=39301
     ```
 
     **Fix — widen the dynamic port range:**
@@ -324,6 +336,8 @@ This skill includes known failure patterns reported publicly (e.g., retrieval to
     netsh int ipv4 set dynamicport tcp start=10000 num=55535
     # Reboot or restart networking for it to take full effect
     ```
+
+    **Fix — extend request timeout.** Increase the request timeout threshold from 10 to 15 minutes to provide buffer for lengthy processes without needing to open additional connections.
 
     **Fix — prefer StreamableHTTP over SSE.** The StreamableHTTP endpoint (`/model_context_protocol/2025-03-26/mcp`) uses short-lived request-response connections that release ports immediately. If your client supports it, prefer StreamableHTTP to avoid port exhaustion entirely.
 
