@@ -11,7 +11,7 @@ Symptoms:
 Checklist:
 1. Ensure **PiecesOS is running** and **LTM is enabled** (see `PREREQS.md`).
 2. If you have the Pieces CLI installed, you can also run `pieces mcp status` or `pieces mcp repair` to check and auto-fix MCP setup for supported platforms.
-2. Confirm the **SSE URL** is correct, including the versioned path (`.../model_context_protocol/2024-11-05/sse`).
+2. Confirm the **endpoint URL** is correct, including the versioned path (`.../model_context_protocol/2025-03-26/sse` for SSE or `.../model_context_protocol/2025-03-26/mcp` for StreamableHTTP).
 3. Avoid **multiple Pieces MCP instances** across apps at the same time (some clients can interfere).
 4. Run:
    - `python scripts/pieces_mcp_scan.py`
@@ -170,4 +170,17 @@ The Pieces Docs MCP (`https://docs.pieces.app/api/mcp`) is a **remote server** f
 
 ## 12) SSE endpoint timing out from WSL
 
-When running from WSL2 in default NAT networking mode, the SSE endpoint (`/2024-11-05/sse`) may time out because long-lived connections are unreliable across the WSL-Windows network boundary. Use the StreamableHTTP endpoint (`/2025-03-26/mcp`) instead, which uses short-lived HTTP requests that are more tolerant of network latency.
+When running from WSL2 in default NAT networking mode, the SSE endpoint (`/2025-03-26/sse`) may time out because long-lived connections are unreliable across the WSL-Windows network boundary. Use the StreamableHTTP endpoint (`/2025-03-26/mcp`) instead, which uses short-lived HTTP requests that are more tolerant of network latency.
+
+## 13) Hermes Agent MCP client fails but server is reachable
+
+If `hermes mcp test pieces` reports a connection failure but the curl verification flow succeeds (see SKILL.md StreamableHTTP section), the issue is in Hermes' HTTP MCP client, not the Pieces server.
+
+**Symptoms:** Hermes MCP reload says pieces did not connect, but `curl` to the MCP endpoint works.
+
+**Root cause (Hermes <= v0.13.0):** The native HTTP MCP client does not send `Accept: application/json, text/event-stream` as a request header. Pieces MCP requires this dual Accept header on every request and returns error -32000 "Not Acceptable" without it.
+
+**Fix:**
+1. Update Hermes: `hermes update` (fixed after v0.13.0)
+2. Verify version: `hermes --version`
+3. As a workaround, call Pieces MCP tools via `terminal` using curl or the RPC scripts in this skill until the update

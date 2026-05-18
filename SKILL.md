@@ -5,7 +5,7 @@ license: MIT
 compatibility: Any Agent Skills host that can call MCP tools and/or run local scripts; assumes PiecesOS exposes MCP on localhost or LAN (commonly port 39300) via SSE or StreamableHTTP endpoints. Also supports remote Pieces Docs MCP for documentation queries.
 metadata:
   author: anthony-demo
-  version: "3.0"
+  version: "3.1"
 ---
 
 # Pieces MCP Playbook
@@ -40,10 +40,34 @@ The default mode. PiecesOS and the MCP client are on the same network (or same m
 ### Mode 2: Local/LAN (StreamableHTTP -- recommended)
 Same network setup as Mode 1, but uses the `/mcp` endpoint with short-lived HTTP requests. No long-lived SSE connections, so no ephemeral port exhaustion risk. Uses session management via `mcp-session-id` header. Prefer this over SSE when your client supports it.
 
-**Protocol flow (3 steps):**
-1. **Initialize** — POST with `method: "initialize"`, capture `mcp-session-id` from response headers.
+**Protocol flow (3 steps + critical header):**
+1. **Initialize** — POST with `method: "initialize"`, capture `mcp-session-id` from response headers. **Must include `Accept: application/json, text/event-stream`** on every request — the server rejects requests missing this header with error -32000 "Not Acceptable."
 2. **Initialized notification** — POST with `method: "notifications/initialized"` using the session ID.
 3. **Call tools** — POST with `method: "tools/call"` using the session ID.
+
+**Quick curl verification (from WSL or any client):**
+```bash
+# Step 1: Initialize (capture mcp-session-id from response header)
+curl -s -D- -X POST "http://<host>:39300/model_context_protocol/2025-03-26/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+
+# Step 2: List tools with session ID
+SESSION="<session-id-from-step-1>"
+curl -s -X POST "http://<host>:39300/model_context_protocol/2025-03-26/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SESSION" \
+  -d '{"jsonrpc":"2.0","id":"2","method":"tools/list","params":{}}'
+
+# Step 3: Call a tool
+curl -s -X POST "http://<host>:39300/model_context_protocol/2025-03-26/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SESSION" \
+  -d '{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"workstream_summaries_full_text_search","arguments":{"query":"test","limit":3}}}'
+```
 
 ### Mode 3: Cloud/Remote via HTTPS Tunnel (MCP-only)
 PiecesOS runs on a remote machine (different network). An HTTPS tunnel (ngrok, Cloudflare Tunnel, etc.) exposes port 39300. The client connects over the public internet using the `/mcp` endpoint (NOT `/sse`).
@@ -57,6 +81,35 @@ ngrok http 39300
 Then use the forwarding URL: `https://SOMETHING.ngrok-free.dev/model_context_protocol/2025-03-26/mcp`
 
 For full cloud setup instructions, session management, and troubleshooting, see `references/CLOUD_CONNECTIVITY.md`.
+
+### Hermes Agent Configuration
+
+When using **Hermes Agent** (the AI agent framework by Nous Research), configure Pieces MCP in `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  pieces:
+    url: "http://aurora:39300/model_context_protocol/2025-03-26/mcp"
+```
+
+**Known compatibility note (Hermes v0.13.0 and earlier):** Hermes' native HTTP MCP client may fail to connect to Pieces' StreamableHTTP endpoint because:
+1. It may not send the required `Accept: application/json, text/event-stream` header (the server responds with error -32000 "Not Acceptable" without it).
+2. Session management via `mcp-session-id` response header must be handled.
+
+**If Hermes fails to connect**, the Pieces MCP server is likely working — verify independently with the curl flow above. If the curl flow succeeds, the issue is in the MCP client, not the server. Fixed in newer Hermes builds (check `hermes --version`).
+
+**Test connection:**
+```bash
+hermes mcp test pieces
+```
+
+**Reload MCP servers after config changes:**
+```bash
+# In-session slash command
+/reload-mcp
+```
+
+For other agent hosts (GitHub Copilot, Claude Desktop, Cursor), see `references/PREREQS.md` and `references/MCP_ENDPOINTS.md`.
 
 ---
 
@@ -116,7 +169,7 @@ These are the primary tools for most workflows. `ask_pieces_ltm` is a semantic q
 
 | Tool | Required Params | Description |
 |------|----------------|-------------|
-| `ask_pieces_ltm` | `question`, `chat_llm` | Ask Pieces a question to retrieve historical/contextual info from the user's environment. Optional: `topics[]`, `application_sources[]`, `open_files[]`, `related_questions[]`, `connected_client` |
+| `ask_pieces_ltm` | `question` | Ask Pieces a question to retrieve historical/contextual info from the user's environment. Optional but recommended: `chat_llm`, `topics[]`, `application_sources[]`, `open_files[]`, `related_questions[]`, `connected_client` |
 | `create_pieces_memory` | `summary_description`, `summary` | Write a never-forgotten memory. Optional: `files[]` (absolute paths), `externalLinks[]` (URLs), `project` (abs path), `connected_client` |
 
 ### Category 2: Full-Text Search Tools
@@ -199,7 +252,7 @@ Timestamp filters are AND'd with the text query. `from` and `to` are each option
   "connected_client": "Hermes"
 }
 ```
-Only `question` and `chat_llm` are required. `application_sources` accepts specific app names from the Pieces source list.
+Only `question` is required. `chat_llm` is optional but recommended for optimal context fitting. `application_sources` accepts specific app names from the Pieces source list.
 
 ### create_pieces_memory payload
 ```json
@@ -295,8 +348,13 @@ When something fails, do this in order:
     netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
     ```
     Then `mcporter config add pieces http://192.168.86.34:39300/model_context_protocol/2025-03-26/mcp --allow-http` will work. Without the portproxy, only localhost connections succeed.
-3.  Confirm the **SSE URL** is correct, including the versioned path (`.../model_context_protocol/2024-11-05/sse`).
-4.  **List tools** via `mcporter list` or `python scripts/pieces_mcp_rpc.py --list-tools`.
+3.  Confirm the **endpoint URL** is correct, including the versioned path (`.../model_context_protocol/2025-03-26/sse` for SSE mode or `.../model_context_protocol/2025-03-26/mcp` for StreamableHTTP mode).
+4.  **List tools** via `mcporter list`, `hermes mcp list`, or `python scripts/pieces_mcp_rpc.py --list-tools`.
+
+4b. **Hermes MCP client fails but server is reachable.** If `hermes mcp test pieces` fails but the curl verification (above) succeeds, the issue is likely:
+    - Hermes' HTTP MCP client not sending the required `Accept: application/json, text/event-stream` header.
+    - Verify with `hermes --version` — this was fixed after v0.13.0. Update with `hermes update`.
+    - As a workaround, you can call Pieces MCP tools via the terminal using curl or the scripts in this skill.
 
 
 This skill includes known failure patterns reported publicly (e.g., retrieval tool failing while memory creation works) to help you design graceful degradation.

@@ -120,3 +120,27 @@ python scripts/pieces_mcp_scan.py
 ```
 
 to scan a small port range and find a responsive MCP server.
+
+## Hermes Agent config (YAML)
+
+When using Hermes Agent, configure the Pieces MCP server in `~/.hermes/config.yaml` under `mcp_servers`:
+
+```yaml
+mcp_servers:
+  pieces:
+    url: "http://aurora:39300/model_context_protocol/2025-03-26/mcp"
+```
+
+For LAN connections (WSL -> Windows host), use the host's LAN IP or hostname (e.g., `aurora`, `192.168.86.34`). A `netsh` portproxy on the Windows host is required (see binding note above).
+
+Test the connection:
+```bash
+hermes mcp test pieces
+```
+
+List all MCP servers:
+```bash
+hermes mcp list
+```
+
+**Known issue (Hermes <= v0.13.0):** The native HTTP MCP client may fail to connect because it doesn't send `Accept: application/json, text/event-stream`. The server is reachable and working — verify with the curl flow below. Update Hermes with `hermes update` for the fix.

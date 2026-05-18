@@ -2,6 +2,28 @@
 
 All notable changes to the Pieces MCP Playbook skill are documented here.
 
+## v3.1.0 (May 18, 2026)
+
+### Hermes Agent configuration + StreamableHTTP Accept header fix
+
+This release is based on live testing against the Pieces MCP server from Hermes Agent v0.13.0 running in WSL, connecting to PiecesOS on Aurora (LAN).
+
+- **Hermes Agent config section** — new YAML config format for `~/.hermes/config.yaml` under `mcp_servers`, including commands for testing (`hermes mcp test pieces`) and reloading (`/reload-mcp`).
+- **StreamableHTTP Accept header now documented prominently** — the `Accept: application/json, text/event-stream` header is a HARD requirement on every POST to the `/mcp` endpoint. The server returns error -32000 "Not Acceptable" without it. Moved from buried cloud troubleshooting note to the main protocol flow with copy-pasteable curl verification.
+- **Hermes MCP client compatibility note (<= v0.13.0)** — Hermes' native HTTP MCP client may fail to connect because it doesn't send the dual Accept header. Server is reachable and working — the issue is client-side. Fixed after v0.13.0.
+- **`chat_llm` corrected from required to optional** — the live `ask_pieces_ltm` schema only requires `question`. `chat_llm` is optional but recommended.
+- **Outdated protocol version references fixed** — `2024-11-05` updated to `2025-03-26` in remaining references.
+- **Troubleshooting: new section 13** — Hermes Agent MCP client failure diagnosis and fix steps.
+- **MCP_ENDPOINTS.md: Hermes config section added** — YAML format, WSL->LAN hostname usage, known client issue.
+
+### Files changed
+
+```
+SKILL.md                         | +35 -5  (Hermes config, Accept header, chat_llm fix, protocol version)
+references/MCP_ENDPOINTS.md      | +24 -0  (Hermes Agent config section)
+references/TROUBLESHOOTING.md    | +15 -2  (section 13: Hermes client, protocol version fixes)
+```
+
 ## v3.0.0 (May 14, 2026)
 
 ### StreamableHTTP promoted as recommended transport
