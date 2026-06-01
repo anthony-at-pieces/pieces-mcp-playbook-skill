@@ -266,7 +266,7 @@ Timestamp filters are AND'd with the text query. `from` and `to` are each option
 **Need full details?** Search first to get UUIDs, then `*_batch_snapshot` to retrieve complete records.
 
 **Broad activity scan (no specific keywords)?** Run multiple FTS queries with different domain keywords, combine and deduplicate:
-`pieces`, `NAE`, `PR code`, `article writing`, `legal`, `meeting call`, `automation script`, `email discord`, `standup`
+`pieces`, `API`, `PR code`, `article writing`, `legal`, `meeting call`, `automation script`, `email discord`, `standup`
 
 Or just use `ask_pieces_ltm` with a broad question.
 
