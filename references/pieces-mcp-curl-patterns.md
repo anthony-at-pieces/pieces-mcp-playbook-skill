@@ -7,7 +7,7 @@
      7|Every interaction starts with an `initialize` call. Capture the `mcp-session-id` from the response headers — all subsequent calls require it.
      8|
      9|```bash
-    10|BASE="http://aurora:39300/model_context_protocol/2025-03-26/mcp"
+    10|BASE="http://localhost:39300/model_context_protocol/2025-03-26/mcp"
     11|
     12|# Initialize and capture session ID
     13|SID=$(curl -s -D - -X POST \
@@ -43,7 +43,7 @@
     43|    "params":{
     44|      "name":"ask_pieces_ltm",
     45|      "arguments":{
-    46|        "question":"What did Anthony work on yesterday?",
+    46|        "question":"What did I work on yesterday?",
     47|        "topics":["recent","work","activity"],
     48|        "chat_llm":"qwen/qwen3.7-max"
     49|      }
@@ -68,7 +68,7 @@
     68|    "params":{
     69|      "name":"workstream_summaries_full_text_search",
     70|      "arguments":{
-    71|        "query":"NAE PR",
+    71|        "query":"bug fix",
     72|        "limit":10,
     73|        "created":{"from":"2026-05-01T00:00:00Z"}
     74|      }

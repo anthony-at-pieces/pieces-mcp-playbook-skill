@@ -1,6 +1,6 @@
      1|# Pieces MCP Tools Catalog
      2|
-     3|All 68 tools exposed by Pieces MCP server at `http://aurora:39300/model_context_protocol/2025-03-26/mcp`.
+     3|All 68 tools exposed by Pieces MCP server at `http://localhost:39300/model_context_protocol/2025-03-26/mcp`.
      4|
      5|Grouped by function. Each tool accepts JSON arguments — see the full schemas in the `tools/list` response.
      6|

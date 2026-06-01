@@ -6,7 +6,7 @@ Typical base URL (port can vary):
 - Local: `http://127.0.0.1:39300`
 - Cloud/remote: `https://<tunnel-host>` (e.g., `https://abc123.ngrok-free.dev`)
 
-> **Binding note:** Pieces MCP binds to **127.0.0.1 only** (loopback). It does NOT listen on 0.0.0.0 or the LAN interface. To reach it from another machine (e.g., WSL -> Aurora), set up a Windows port proxy on the Pieces host:
+> **Binding note:** Pieces MCP binds to **127.0.0.1 only** (loopback). It does NOT listen on 0.0.0.0 or the LAN interface. To reach it from another machine (e.g., WSL -> your Pieces host), set up a Windows port proxy on the Pieces host:
 > ```powershell
 > # Elevated PowerShell on the Windows host
 > netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
@@ -31,7 +31,7 @@ The client opens a long-lived SSE connection (Accept: `text/event-stream`). The 
 
 ```
 event: endpoint
-data: /model_context_protocol/2025-03-26/messages?sessionId=1777506843324&token=AAABndup-...
+data: /model_context_protocol/2025-03-26/messages?sessionId=1777506843324&token=<session-token>
 ```
 
 **Important:** The sessionId + token are per-connection. You MUST open the SSE stream first, capture the messages endpoint from the `endpoint` event, then POST to that URL. The response to your POST comes back on the SSE stream (the POST itself returns "Message processed").
@@ -70,7 +70,7 @@ See `references/CLOUD_CONNECTIVITY.md` for the full curl flow and session manage
 1) Start the SSE listener (terminal A):
 
 ```bash
-curl -s -N "http://192.168.86.34:39300/model_context_protocol/2025-03-26/sse" \
+curl -s -N "http://192.168.1.100:39300/model_context_protocol/2025-03-26/sse" \
   -H "Accept: text/event-stream"
 ```
 
@@ -79,7 +79,7 @@ Capture the `data:` line -- that's your messages URL.
 2) Send a JSON-RPC request (terminal B), using the messages URL from step 1:
 
 ```bash
-curl -s "http://192.168.86.34:39300/model_context_protocol/2025-03-26/messages?sessionId=XXX&token=YYY" \
+curl -s "http://192.168.1.100:39300/model_context_protocol/2025-03-26/messages?sessionId=XXX&token=YYY" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
@@ -92,20 +92,20 @@ The included script handles the SSE handshake + POST + response capture automati
 
 ```bash
 # List all tools
-python scripts/pieces_mcp_rpc.py --host 192.168.86.34 --mcp-version 2025-03-26 --list-tools
+python scripts/pieces_mcp_rpc.py --host 192.168.1.100 --mcp-version 2025-03-26 --list-tools
 
 # Call a specific tool
-python scripts/pieces_mcp_rpc.py --host 192.168.86.34 --mcp-version 2025-03-26 \
+python scripts/pieces_mcp_rpc.py --host 192.168.1.100 --mcp-version 2025-03-26 \
   --call-tool ask_pieces_ltm \
   --args '{"question":"What did I work on yesterday?","chat_llm":"gemini-2.5-flash"}'
 
 # Full-text search
-python scripts/pieces_mcp_rpc.py --host 192.168.86.34 --mcp-version 2025-03-26 \
+python scripts/pieces_mcp_rpc.py --host 192.168.1.100 --mcp-version 2025-03-26 \
   --call-tool workstream_summaries_full_text_search \
   --args '{"query":"caching bug","limit":5}'
 
 # Batch snapshot
-python scripts/pieces_mcp_rpc.py --host 192.168.86.34 --mcp-version 2025-03-26 \
+python scripts/pieces_mcp_rpc.py --host 192.168.1.100 --mcp-version 2025-03-26 \
   --call-tool workstream_summaries_batch_snapshot \
   --args '{"identifiers":["uuid-1","uuid-2"]}'
 ```
@@ -128,10 +128,10 @@ When using Hermes Agent, configure the Pieces MCP server in `~/.hermes/config.ya
 ```yaml
 mcp_servers:
   pieces:
-    url: "http://aurora:39300/model_context_protocol/2025-03-26/mcp"
+    url: "http://localhost:39300/model_context_protocol/2025-03-26/mcp"
 ```
 
-For LAN connections (WSL -> Windows host), use the host's LAN IP or hostname (e.g., `aurora`, `192.168.86.34`). A `netsh` portproxy on the Windows host is required (see binding note above).
+For LAN connections (WSL -> Windows host), use the host's LAN IP or hostname (e.g., `192.168.1.100` or your host's LAN IP). A `netsh` portproxy on the Windows host is required (see binding note above).
 
 Test the connection:
 ```bash

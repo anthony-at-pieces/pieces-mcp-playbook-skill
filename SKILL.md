@@ -24,7 +24,7 @@ Pieces MCP exposes **68 tools** (as of Pieces 12.3.11+) organized into six categ
   - **Local/LAN** (StreamableHTTP -- **preferred**): `http://<host>:39300/model_context_protocol/2025-03-26/mcp`. Uses short-lived HTTP requests, no ephemeral port exhaustion.
   - **Local/LAN** (SSE -- legacy): `.../2025-03-26/sse` (or `.../2024-11-05/sse` on older versions). Long-lived connection, avoid on port-constrained hosts.
   - **Cloud/remote** (MCP-only): `<tunnel-url>/.../mcp`. Use when PiecesOS is on a different network.
-- **Network note (LAN):** Pieces MCP binds to **127.0.0.1 only**. If connecting from another machine on the same LAN (e.g., WSL to `aurora`), a Windows port proxy is required on the Pieces host:
+- **Network note (LAN):** Pieces MCP binds to **127.0.0.1 only**. If connecting from another machine on the same LAN (e.g., WSSL to your Pieces host), a Windows port proxy is required on the Pieces host:
   ```powershell
   netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
   ```
@@ -102,7 +102,7 @@ Reload: `/reload-mcp` (in-session slash command)
 Once connected, all Pieces tools are available as native Hermes tools prefixed with `mcp_pieces_*`:
 ```
 mcp_pieces_ask_pieces_ltm(question="What did I work on yesterday?")
-mcp_pieces_workstream_summaries_full_text_search(query="NAE PR", limit=10)
+mcp_pieces_workstream_summaries_full_text_search(query="bug fix", limit=10)
 ```
 
 For contexts where native MCP tools aren't available (cron jobs, batch `execute_code`), use the curl or Python urllib patterns in `references/DIRECT_PYTHON_CLIENT.md` and `references/pieces-mcp-curl-patterns.md`.
@@ -163,7 +163,7 @@ Full catalog: `references/pieces-mcp-tools-catalog.md`. Summary below.
 | `extract_temporal_range` | `query` | Convert "yesterday"/"last week" → ISO timestamps. **Picky**: rejects "the past month", accepts "yesterday". For reliable filtering, compute ISO dates in code. |
 
 ### Category 2: Full-Text Search Tools (fast, ~200ms)
-Keyword-based search. Use **short, specific keywords** — not natural language phrases. Good: `"auth login"`, `"NAE PR"`, `"DraftKings"`. Bad: `"What did I work on yesterday?"`. **Wildcards (`*`) do NOT work**.
+Keyword-based search. Use **short, specific keywords** — not natural language phrases. Good: `"auth login"`, `"bug fix"`, `"meeting notes"`. Bad: `"What did I work on yesterday?"`. **Wildcards (`*`) do NOT work**.
 
 All accept: `query` (required), `limit`, optional `created`/`updated` timestamp filters (`{from, to}` ISO 8601).
 

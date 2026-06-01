@@ -20,7 +20,7 @@
     20|```python
     21|import json, urllib.request
     22|
-    23|BASE = "http://aurora:39300/model_context_protocol/2025-03-26/mcp"
+    23|BASE = "http://localhost:39300/model_context_protocol/2025-03-26/mcp"
     24|
     25|def mcp(session_id, method, params, req_id, timeout=60):
     26|    body = json.dumps({
