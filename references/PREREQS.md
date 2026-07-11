@@ -3,9 +3,9 @@
 ## 1) PiecesOS + Pieces Desktop App
 - Install the **Pieces Desktop App** and ensure it is actively running.
 - Ensure **PiecesOS** is running on the machine (it powers collection + local services).
-- Enable **Long‑Term Memory (LTM‑2.7)**:
+- Enable **Long-Term Memory (LTM)**:
   - Open the PiecesOS **Quick Menu** (PiecesOS tray/menu bar icon on Windows or macOS)
-  - Select **Enable Long‑Term Memory Engine**
+  - Select **Enable Long-Term Memory Engine**
 
 Reference:
 - https://docs.pieces.app/products/quick-guides/ltm-context
@@ -19,15 +19,16 @@ Your VS Code `settings.json` should include a Pieces MCP server entry such as:
 {
   "mcpServers": {
     "Pieces": {
-      "url": "http://localhost:39300/model_context_protocol/2024-11-05/sse"
+      "url": "http://localhost:39300/model_context_protocol/2025-03-26/mcp"
     }
   }
 }
 ```
 
 Notes:
+- Prefer the `/mcp` (StreamableHTTP) endpoint; use `/sse` only if your client cannot speak StreamableHTTP.
 - Copilot must be in **Agent** mode (not Ask) to use MCP tools.
-- Don’t add the `ask_pieces_ltm` tool as “context”; Agent mode uses it automatically.
+- Don't add the `ask_pieces_ltm` tool as "context"; Agent mode uses it automatically.
 
 Reference:
 - https://docs.pieces.app/products/mcp/github-copilot
@@ -90,24 +91,26 @@ These scripts and many wrapper implementations look for:
 
 - `PIECES_MCP_HOST` (default: 127.0.0.1)
 - `PIECES_MCP_PORT` (default: 39300)
-- `PIECES_MCP_VERSION` (default: 2024-11-05)
-- `PIECES_MCP_CHAT_LLM` (optional; used by some `ask_pieces_ltm` schemas)
+- `PIECES_MCP_VERSION` (default: 2025-03-26)
+- `PIECES_MCP_TRANSPORT` (`auto`, `streamable-http`, or `sse`; default: auto)
+- `PIECES_MCP_URL` (full base URL such as an ngrok tunnel; overrides host/port)
+- `PIECES_MCP_CHAT_LLM` (optional; passed to `ask_pieces_ltm`)
 
 Example:
 
 ```bash
 export PIECES_MCP_PORT=39300
-export PIECES_MCP_VERSION=2024-11-05
+export PIECES_MCP_VERSION=2025-03-26
 ```
 
 
-## 5) Where to find the correct SSE URL (authoritative)
-Pieces documents that you can find the current MCP SSE endpoint URL:
-- in the Pieces Desktop App under **Settings → Model Context Protocol (MCP)**
+## 5) Where to find the correct MCP URL (authoritative)
+Pieces documents that you can find the current MCP endpoint URL:
+- in the Pieces Desktop App under **Settings -> Model Context Protocol (MCP)**
 - or in the PiecesOS Quick Menu
 
 The URL is usually formatted like:
-`http://localhost:{port_number}/model_context_protocol/{version}/sse`
+`http://localhost:{port_number}/model_context_protocol/{version}/mcp` (or `.../sse` for the legacy transport)
 
 Reference:
 - https://docs.pieces.app/products/mcp/cursor

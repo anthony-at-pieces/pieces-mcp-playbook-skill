@@ -1,28 +1,47 @@
 # Troubleshooting Pieces MCP (practical + failure-mode oriented)
 
-This file is designed to help you get from “it failed” to an actionable bug report or a reliable fallback.
+This file is designed to help you get from "it failed" to an actionable bug report or a reliable fallback.
 
-## 1) Connection problems (can’t reach MCP)
+## 1) Connection problems (can't reach MCP)
 
 Symptoms:
-- MCP host says “cannot connect”
+- MCP host says "cannot connect"
 - your requests hang / time out
 
 Checklist:
-1. Ensure **PiecesOS is running** and **LTM is enabled** (see `PREREQS.md`).
+1. Ensure **PiecesOS is running** and **LTM is enabled** (see `PREREQS.md`). Quick check: `curl http://localhost:39300/.well-known/version` returns the version as plain text.
 2. If you have the Pieces CLI installed, you can also run `pieces mcp status` or `pieces mcp repair` to check and auto-fix MCP setup for supported platforms.
-2. Confirm the **endpoint URL** is correct, including the versioned path (`.../model_context_protocol/2025-03-26/sse` for SSE or `.../model_context_protocol/2025-03-26/mcp` for StreamableHTTP).
-3. Avoid **multiple Pieces MCP instances** across apps at the same time (some clients can interfere).
-4. Run:
+3. Confirm the **URL** is correct, including the versioned path (`.../model_context_protocol/2025-03-26/mcp` recommended, or `.../sse`).
+4. Avoid **multiple Pieces MCP instances** across apps at the same time (some clients can interfere).
+5. Run:
    - `python scripts/pieces_mcp_scan.py`
    - `python scripts/pieces_mcp_rpc.py --list-tools`
 
-## 2) Tool exists, but retrieval fails (“Failed to extract context”)
+## 1a) HTTP 400 "Missing sessionId query parameter" on POST to /messages
+
+Exact symptom:
+```
+POST failed: HTTPError: HTTP Error 400: Bad Request
+{"jsonrpc":"2.0","error":{"code":-32602,"message":"Missing sessionId query parameter"},"id":null}
+```
+
+Root cause: the client POSTed to a hand-built `/messages` URL. The SSE transport requires you to:
+1. Open the `/sse` stream first.
+2. Read the server's `endpoint` event -- its data is the POST URL, including per-connection `sessionId` and `token` query parameters.
+3. POST to that exact URL.
+
+Current PiecesOS builds enforce this strictly; older builds tolerated bare `/messages` POSTs. The bundled scripts handle the handshake automatically as of skill v4.0.0 -- if you see this error, you are running pre-4.0 scripts or a custom client that skips the endpoint event. Alternatively, switch to the StreamableHTTP endpoint (`/mcp`), which has no endpoint-event handshake at all.
+
+## 1b) HTTP 400 -32700 "Parse error" on POST to /messages
+
+The SSE `/messages` endpoint requires **integer** JSON-RPC ids. String ids (`"id": "1"`) are rejected with `-32700 Parse error` (verified on PiecesOS 12.5.0). The StreamableHTTP `/mcp` endpoint accepts both; string ids are recommended there for tunnel compatibility. See the id table in `MCP_ENDPOINTS.md`.
+
+## 2) Tool exists, but retrieval fails ("Failed to extract context")
 
 There is a publicly reported failure mode where:
 - `tools/list` works
 - `create_pieces_memory` works
-- but `ask_pieces_ltm` returns an error like “Failed to extract context”
+- but `ask_pieces_ltm` returns an error like "Failed to extract context"
 
 This exact pattern was captured in a GitHub support issue with reproduction steps and curl commands:
 - https://github.com/pieces-app/support/issues/747
@@ -36,7 +55,7 @@ This exact pattern was captured in a GitHub support issue with reproduction step
   - call `ask_pieces_ltm` with a trivial question
   - if it errors, skip deep research features that depend on it
 
-## 3) “Workstream summary” generation fails (connection closed)
+## 3) "Workstream summary" generation fails (connection closed)
 
 There is a reported failure mode during summary generation where the internal HTTP request fails with a connection closing before headers are received:
 - https://github.com/pieces-app/support/issues/751
@@ -47,11 +66,11 @@ There is a reported failure mode during summary generation where the internal HT
   - bounded payload sizes
   - retries with backoff
   - chunking (split a big request into smaller ones)
-- Emit structured errors (HTTP status, endpoint, duration, payload size) so failures aren’t silent.
+- Emit structured errors (HTTP status, endpoint, duration, payload size) so failures aren't silent.
 
 ## 4) Observability: make failures explain themselves
 
-If you build an agent workflow around MCP tools, do not “swallow” tool failures.
+If you build an agent workflow around MCP tools, do not "swallow" tool failures.
 Always record:
 - tool name
 - request payload (redact secrets)
@@ -59,7 +78,7 @@ Always record:
 - timing (start/end)
 - host + port + MCP version path
 
-This makes “it failed” reproducible.
+This makes "it failed" reproducible.
 
 ## 5) Minimal bug report template
 
@@ -109,9 +128,9 @@ When connecting to Pieces MCP over an HTTPS tunnel (ngrok, Cloudflare Tunnel, cu
 ### 8b) Initialize returns HTTP 500 (Internal Server Error)
 **Fix:** Check these common causes:
 1. **Shell quoting issues:** Use file-based JSON (`--data-binary @init.json`) instead of inline `-d '{...}'`
-2. **Wrong JSON-RPC ID type:** Use string `"id": "1"`, not integer `"id": 1`
+2. **Wrong JSON-RPC ID type:** Use string `"id": "1"` over tunnels (integer ids have caused 500s on some setups; note the SSE transport is the opposite -- integers only)
 3. **Missing headers:** Both `Content-Type: application/json` AND `Accept: application/json, text/event-stream` are required
-4. **Stale session:** If re-initializing, use a fresh client session ID in the `mcp-session-id` header
+4. **Stale session:** If a session expires, send a fresh `initialize` (no session header needed) and use the new server-assigned `mcp-session-id` from the response headers
 
 ### 8c) Tools seem missing or unresponsive after MCPorter config
 **Fix:**
@@ -170,7 +189,7 @@ The Pieces Docs MCP (`https://docs.pieces.app/api/mcp`) is a **remote server** f
 
 ## 12) SSE endpoint timing out from WSL
 
-When running from WSL2 in default NAT networking mode, the SSE endpoint (`/2025-03-26/sse`) may time out because long-lived connections are unreliable across the WSL-Windows network boundary. Use the StreamableHTTP endpoint (`/2025-03-26/mcp`) instead, which uses short-lived HTTP requests that are more tolerant of network latency.
+When running from WSL2 in default NAT networking mode, the SSE endpoint (`/2024-11-05/sse`) may time out because long-lived connections are unreliable across the WSL-Windows network boundary. Use the StreamableHTTP endpoint (`/2025-03-26/mcp`) instead, which uses short-lived HTTP requests that are more tolerant of network latency.
 
 ## 13) Hermes Agent MCP client fails but server is reachable
 
@@ -183,4 +202,4 @@ If `hermes mcp test pieces` reports a connection failure but the curl verificati
 **Fix:**
 1. Update Hermes: `hermes update` (fixed after v0.13.0)
 2. Verify version: `hermes --version`
-3. As a workaround, call Pieces MCP tools via `terminal` using curl or the RPC scripts in this skill until the update
+3. As a workaround, call Pieces MCP tools via curl or the scripts in this skill until the update

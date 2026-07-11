@@ -4,7 +4,7 @@
      4|
      5|## Initialize Session
      6|
-     7|Every interaction starts with an `initialize` call. Capture the `mcp-session-id` from the response headers — all subsequent calls require it.
+     7|Every interaction starts with an `initialize` call. Capture the `mcp-session-id` from the response headers -- all subsequent calls require it.
      8|
      9|```bash
     10|BASE="http://localhost:39300/model_context_protocol/2025-03-26/mcp"
@@ -107,7 +107,7 @@
    107|
    108|## Fetch Annotations (Read Summary Content)
    109|
-   110|Summaries are shells — the real narrative content is in annotations. After a summary search returns annotation UUIDs, fetch them:
+   110|Summaries are shells -- the real narrative content is in annotations. After a summary search returns annotation UUIDs, fetch them:
    111|
    112|```bash
    113|curl -s -X POST \
@@ -129,7 +129,7 @@
    129|```
    130|
    131|Each annotation has a `type` field:
-   132|- **SUMMARY**: The hierarchical narrative (TLDR, Core Tasks, Key Decisions) — usually what you want
+   132|- **SUMMARY**: The hierarchical narrative (TLDR, Core Tasks, Key Decisions) -- usually what you want
    133|- **DESCRIPTION**: One-paragraph overview
    134|- Other types (ATTACHMENT, INSTRUCTION, etc.) for specialized content
    135|
@@ -152,7 +152,7 @@
    152|  "$BASE"
    153|```
    154|
-   155|Returns ISO 8601 UTC ranges. Unreliable for complex phrases — compute dates yourself when possible:
+   155|Returns ISO 8601 UTC ranges. Unreliable for complex phrases -- compute dates yourself when possible:
    156|
    157|```bash
    158|# Bash: 7 days ago in ISO format

@@ -154,7 +154,7 @@ Create `init.json`:
   "jsonrpc": "2.0",
   "method": "initialize",
   "params": {
-    "protocolVersion": "0.1.0",
+    "protocolVersion": "2025-03-26",
     "capabilities": {},
     "clientInfo": {
       "name": "your-agent-name",
@@ -165,12 +165,11 @@ Create `init.json`:
 }
 ```
 
-Send:
+Send (no session header is needed on this first request; the server assigns one):
 ```bash
 curl -i -X POST "https://abc123.ngrok-free.dev/model_context_protocol/2025-03-26/mcp" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "mcp-session-id: init-request-001" \
   --data-binary @init.json
 ```
 
@@ -189,9 +188,9 @@ Response body:
   "jsonrpc": "2.0",
   "id": "1",
   "result": {
-    "protocolVersion": "0.1.0",
+    "protocolVersion": "2025-03-26",
     "capabilities": { "tools": {} },
-    "serverInfo": { "name": "pieces", "version": "1.0.0" }
+    "serverInfo": { "name": "pieces-mcp-server", "version": "1.0.0" }
   }
 }
 ```

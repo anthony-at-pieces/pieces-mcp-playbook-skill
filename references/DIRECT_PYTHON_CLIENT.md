@@ -15,7 +15,20 @@
     15|   response -- every subsequent request must include that header.
     16|3. The session ID persists for the lifetime of the process. Reuse across calls.
     17|
-    18|## Working pattern (urllib, stdlib only)
+    18|## Prefer the bundled client module
+
+For anything beyond a one-off call, import  instead of hand-rolling the pattern below -- it implements this flow (plus SSE fallback, error handling, and UTF-8 console output) behind a two-line API:
+
+```python
+from pieces_mcp_client import connect
+client = connect()  # StreamableHTTP first, SSE fallback
+resp = client.request("tools/call", {"name": "ask_pieces_ltm", "arguments": {"question": "..."}})
+client.close()
+```
+
+The pattern below remains useful when you cannot ship a second file.
+
+## Working pattern (urllib, stdlib only)
     19|
     20|```python
     21|import json, urllib.request

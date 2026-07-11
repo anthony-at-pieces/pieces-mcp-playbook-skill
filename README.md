@@ -20,7 +20,8 @@ That is the full loop.
 - `references/WRITE_PLAYBOOK.md`: memory write template and policy.
 - `references/TROUBLESHOOTING.md`: failure modes and practical fixes.
 - `references/VECTOR_SEARCH_WITH_COUCHDB.md`: optional vector-search context.
-- `scripts/pieces_mcp_scan.py`: scan for active MCP SSE endpoints.
+- `scripts/pieces_mcp_client.py`: shared MCP client library (StreamableHTTP + SSE).
+- `scripts/pieces_mcp_scan.py`: scan for active MCP endpoints (both transports).
 - `scripts/pieces_mcp_rpc.py`: call MCP tools from shell.
 - `scripts/pieces_mcp_smoke_test.py`: quick end-to-end validation.
 
@@ -47,32 +48,33 @@ That is the full loop.
 
 Most setups use:
 
-- `http://localhost:39300/model_context_protocol/2024-11-05/sse`
-- `http://localhost:39300/model_context_protocol/2024-11-05/messages`
+- `http://localhost:39300/model_context_protocol/2025-03-26/mcp` (StreamableHTTP, recommended)
+- `http://localhost:39300/model_context_protocol/2025-03-26/sse` (SSE, legacy)
 
 Do not lock these in stone.
 
-Match host, port, and protocol path to your actual Pieces server.
+Match host, port, and protocol path to your actual Pieces server. Run `python scripts/pieces_mcp_scan.py` to discover both.
 
 ## Environment variables
 
 - `PIECES_MCP_HOST` (default `127.0.0.1`)
 - `PIECES_MCP_PORT` (default `39300`)
-- `PIECES_MCP_VERSION` (default `2024-11-05`)
+- `PIECES_MCP_VERSION` (default `2025-03-26`)
+- `PIECES_MCP_TRANSPORT` (`auto`, `streamable-http`, or `sse`; default `auto`)
+- `PIECES_MCP_URL` (full base URL, e.g. an ngrok tunnel; overrides host/port)
 - `PIECES_MCP_CHAT_LLM` (optional)
 
 ## Query and write contract
 
-- Retrieval target: `ask_pieces_ltm`.
+- Primary work-history retrieval: `search_memory` (graph-based; persons/hints/sources filters).
+- Semantic retrieval: `ask_pieces_ltm` (required field: `question`).
 - Optional write target: `create_pieces_memory`.
-- Required payload field: `question`.
-- Usually keep `chat_llm` set explicitly.
+- `chat_llm` is optional but recommended on `ask_pieces_ltm` (fits context to your model).
 - Use optional controls only when needed:
-  - `time_window`
   - `application_sources`
   - `topics`
   - `related_questions`
-  - `connected_client`
+  - `open_files`
 
 ## MCP host examples
 
@@ -82,7 +84,7 @@ Match host, port, and protocol path to your actual Pieces server.
 {
   "mcpServers": {
     "Pieces": {
-      "url": "http://localhost:39300/model_context_protocol/2024-11-05/sse"
+      "url": "http://localhost:39300/model_context_protocol/2025-03-26/mcp"
     }
   }
 }
@@ -101,9 +103,9 @@ Then lock down transport with SSH tunnel or VPN. Do not expose MCP publicly.
 If `mcporter` is in your toolchain, register before calling tools:
 
 ```bash
-mcporter config add pieces http://<host>:<port>/model_context_protocol/<version>/sse --allow-http
+mcporter config add pieces http://<host>:<port>/model_context_protocol/2025-03-26/mcp --allow-http
 mcporter list
-mcporter call pieces.ask_pieces_ltm --args '{"question":"what did I work on?","chat_llm":"gemini-2.5-flash"}' --output json
+mcporter call pieces.ask_pieces_ltm --args '{"question":"what did I work on?"}' --output json
 ```
 
 If discovery still stalls:
@@ -126,9 +128,16 @@ python scripts/pieces_mcp_smoke_test.py
 ```
 
 Success means:
-- endpoints discoverable,
-- tool list returns,
-- ask/create calls execute where available.
+- endpoints discoverable (both transports reported),
+- tool list returns (69 tools on PiecesOS 12.5.0).
+
+The smoke test is read-only by default. To exercise retrieval and the write path:
+
+```bash
+python scripts/pieces_mcp_smoke_test.py --ask --write
+```
+
+`--ask` runs a real `ask_pieces_ltm` query (slow). `--write` creates an actual memory in your LTM.
 
 ### 2) Retrieval pattern
 
@@ -145,11 +154,12 @@ Refine only when needed:
 ```json
 {
   "question": "Summarize my debugging work on cache behavior yesterday afternoon.",
-  "time_window": "yesterday afternoon",
   "application_sources": ["Visual Studio Code", "Terminal", "Warp"],
   "topics": ["cache", "ttl", "race condition", "incident"]
 }
 ```
+
+Put the timeframe in the question text; there is no `time_window` parameter. For strict UTC bounds use `extract_temporal_range` plus `created` filters on the search tools (see `references/QUERY_PLAYBOOK.md`).
 
 ### 3) Validation rules
 
@@ -167,12 +177,12 @@ Only write back entries that future me will actually read:
 
 ```json
 {
-  "summary": "Standup summary — 2026-01-01",
-  "summary_description": "- Focused on cache TTL race in API path\n- Added jitter and singleflight guard\n- Added follow-up validation checks\n- Next: add regression coverage",
-  "tags": ["standup", "cache", "api", "ABC-456"],
-  "source_hint": "Derived from LTM retrieval via Pieces MCP"
+  "summary_description": "Standup summary -- 2026-01-01",
+  "summary": "## Standup 2026-01-01\n- Focused on cache TTL race in API path (ABC-456)\n- Added jitter and singleflight guard\n- Added follow-up validation checks\n- Next: add regression coverage"
 }
 ```
+
+Note the field semantics: `summary_description` is the short title, `summary` is the detailed markdown body. There is no `tags` field; put key terms in the summary text.
 
 ## Troubleshooting
 
@@ -184,9 +194,9 @@ Only write back entries that future me will actually read:
 
 ## Optional low-level check
 
-For SSE/Messages-level validation, open `/sse` and post JSON-RPC to `/messages`.
+For SSE/Messages-level validation, open `/sse`, capture the `endpoint` event (it carries the per-connection sessionId and token), and post JSON-RPC to that exact URL with integer ids. Never post to a hand-built `/messages` path -- it returns HTTP 400.
 
-Use `references/MCP_ENDPOINTS.md` for command examples.
+Use `references/MCP_ENDPOINTS.md` for command examples on both transports.
 
 ## Security and reliability
 
