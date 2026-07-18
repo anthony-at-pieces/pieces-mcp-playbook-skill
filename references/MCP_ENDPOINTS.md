@@ -6,11 +6,13 @@ Typical base URL (port can vary):
 - Local: `http://127.0.0.1:39300`
 - Cloud/remote: `https://<tunnel-host>` (e.g., `https://abc123.ngrok-free.dev`)
 
-> **Binding note:** Pieces MCP binds to **127.0.0.1 only** (loopback). It does NOT listen on 0.0.0.0 or the LAN interface. To reach it from another machine, set up a Windows port proxy on the Pieces host:
-> ```powershell
-> # Elevated PowerShell on the Windows host
-> netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
-> ```
+> **Binding note:** By default Pieces MCP binds to **127.0.0.1 only** (loopback) -- it does NOT listen on 0.0.0.0 or the LAN interface. Two ways to reach it from another machine:
+> - **Native binding (preferred):** Set `PIECES_LISTEN_ALL=true` on the Pieces host and fully restart PiecesOS. `os_server` reads this at runtime (`os.dart` / `os_internal_server.dart`) and binds `InternetAddress.anyIPv4` (0.0.0.0) instead of loopback. **This exposes the entire PiecesOS HTTP API on the LAN, with no auth by default -- trusted networks only.** Ref: https://github.com/pieces-app/os_server/issues/2009.
+> - **Port proxy (no restart):** Set up a Windows port proxy on the Pieces host:
+>   ```powershell
+>   # Elevated PowerShell on the Windows host
+>   netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
+>   ```
 >
 > For cross-network access (PiecesOS on a different network), use an HTTPS tunnel (ngrok, Cloudflare Tunnel, etc.) instead. See `references/CLOUD_CONNECTIVITY.md`.
 

@@ -5,7 +5,7 @@ license: MIT
 compatibility: Any Agent Skills host that can call MCP tools and/or run local scripts; assumes PiecesOS exposes MCP on localhost or LAN (commonly port 39300) via StreamableHTTP or SSE endpoints. Also supports remote Pieces Docs MCP for documentation queries.
 metadata:
   author: anthony-at-pieces
-  version: "4.0.0"
+  version: "4.1.0"
   hermes:
     tags: [Pieces, MCP, LTM, StreamableHTTP, SSE, memory, workflow]
     related_skills: [native-mcp]
@@ -24,10 +24,17 @@ Pieces MCP exposes **69 tools** organized into nine categories (see Tool Catalog
   - **Local/LAN (StreamableHTTP -- recommended):** `http://<host>:39300/model_context_protocol/2025-03-26/mcp`. Short-lived HTTP requests instead of long-lived SSE connections. Releases ephemeral ports immediately. Prefer this whenever your client supports it.
   - **Local/LAN (SSE -- legacy):** `http://<host>:39300/model_context_protocol/2025-03-26/sse` (the `2024-11-05` path also works). Requires the endpoint-event handshake described below.
   - **Cloud/remote (StreamableHTTP only, no SSE):** `<tunnel-url>/model_context_protocol/2025-03-26/mcp` -- use this when PiecesOS is on a different network, exposed via ngrok or any HTTPS tunnel. See `references/CLOUD_CONNECTIVITY.md` for full setup.
-- **Network note (LAN):** Pieces MCP binds to **127.0.0.1 only**. If connecting from another machine on the same LAN, a Windows port proxy is required on the Pieces host:
-  ```powershell
-  netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
-  ```
+- **Network note (LAN):** By default Pieces MCP binds to **127.0.0.1 only**. Two ways to reach it from another machine on the same LAN:
+  - **Native binding (preferred, no proxy):** Set `PIECES_LISTEN_ALL=true` on the Pieces host, then **fully restart PiecesOS** (quit from the tray and relaunch -- `setx` only applies to processes started afterward). On restart, `os_server` binds `0.0.0.0:39300` instead of loopback.
+    ```powershell
+    setx PIECES_LISTEN_ALL true
+    ```
+    `PIECES_LISTEN_ALL` is read at runtime by `os.dart` and `os_internal_server.dart` (`anyIPv4` when `true`, else `loopbackIPv4`); unlike `SKIP_AUTHENTICATION` it was intentionally left runtime, so no rebuild is needed. **Security:** this exposes the entire PiecesOS HTTP API (not just MCP) on the LAN, and the local API has no auth by default -- only enable it on a trusted network. Ref: https://github.com/pieces-app/os_server/issues/2009.
+  - **Port proxy (no restart, no env change):** PiecesOS keeps binding loopback; a Windows port proxy on the Pieces host relays LAN traffic to it (elevated PowerShell):
+    ```powershell
+    netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
+    ```
+    Clean up stale rules when done -- they consume sockets (see Troubleshooting).
 - **Network note (cloud):** If PiecesOS is on a different network entirely, use an HTTPS tunnel (ngrok, custom tunnel, any HTTPS proxy forwarding to localhost:39300). The endpoint path is `/mcp` (not `/sse`). See `references/CLOUD_CONNECTIVITY.md`.
 - Your environment provides some way to call MCP tools -- either directly or via the included scripts.
 
@@ -389,12 +396,14 @@ When something fails, do this in order:
 1. **Confirm PiecesOS is running and LTM is enabled** (see `references/PREREQS.md`). If you get an `ECONNRESET`, this is the likely culprit. Check `http://localhost:39300/.well-known/version` -- it returns the PiecesOS version as plain text.
 2. **HTTP 400 "Missing sessionId query parameter" on POST to /messages** -- you are POSTing to a hand-built `/messages` URL. The SSE transport requires you to open `/sse` first and POST to the exact URL delivered in the `endpoint` event (it carries per-connection `sessionId` and `token` query parameters). The bundled scripts (v4.0.0+) do this automatically; older script versions did not and always fail with this error on current PiecesOS builds.
 3. **HTTP 400 -32700 "Parse error" on POST to /messages** -- you are sending string JSON-RPC ids over SSE. The SSE endpoint requires integer ids (`"id": 1`, not `"id": "1"`).
-4. **Pieces MCP binds to 127.0.0.1 only** (not 0.0.0.0). If connecting from another machine on the LAN, you need a port proxy on the Pieces host:
-    ```powershell
-    # Elevated PowerShell on the Windows host running Pieces
-    netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
-    ```
-    Then `mcporter config add pieces http://<lan-ip>:39300/model_context_protocol/2025-03-26/mcp --allow-http` will work. Without the portproxy, only localhost connections succeed.
+4. **Pieces MCP binds to 127.0.0.1 only by default** (not 0.0.0.0). To connect from another machine on the LAN, either:
+    - **Native (preferred):** `setx PIECES_LISTEN_ALL true` on the Pieces host, then fully restart PiecesOS so `os_server` binds `0.0.0.0:39300`. Exposes the whole PiecesOS HTTP API to the LAN (no auth by default) -- trusted networks only. See the LAN network note near the top of this file.
+    - **Port proxy (no restart):**
+      ```powershell
+      # Elevated PowerShell on the Windows host running Pieces
+      netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=39300 connectaddress=127.0.0.1 connectport=39300
+      ```
+    Then `mcporter config add pieces http://<lan-ip>:39300/model_context_protocol/2025-03-26/mcp --allow-http` will work. Without one of these, only localhost connections succeed.
 5. **Confirm the URL** is correct, including the versioned path (`.../model_context_protocol/2025-03-26/mcp` or `.../sse`). Run `python scripts/pieces_mcp_scan.py` to discover live endpoints and the PiecesOS version.
 6. **List tools** via `hermes mcp list`, `mcporter list`, or `python scripts/pieces_mcp_rpc.py --list-tools`.
 7. **Hermes MCP client fails but server is reachable.** If `hermes mcp test pieces` fails with 400 but the curl verification succeeds, the runtime connection is actually fine -- all 69 tools are available in sessions. This is a known false negative in the test command's header path. Verify with `hermes mcp list` (should show pieces as enabled with a tool count). See `references/TROUBLESHOOTING.md` section 13.

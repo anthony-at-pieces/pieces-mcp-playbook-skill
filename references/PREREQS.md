@@ -96,6 +96,10 @@ These scripts and many wrapper implementations look for:
 - `PIECES_MCP_URL` (full base URL such as an ngrok tunnel; overrides host/port)
 - `PIECES_MCP_CHAT_LLM` (optional; passed to `ask_pieces_ltm`)
 
+**PiecesOS-side (not a wrapper var):**
+
+- `PIECES_LISTEN_ALL` (`true`/`false`, default `false`) -- read at runtime by PiecesOS itself (`os_server`). When `true`, PiecesOS binds `0.0.0.0:39300` (all interfaces) instead of `127.0.0.1`, after a **full restart**. Use for LAN access without a port proxy. Exposes the whole PiecesOS HTTP API to the network with no auth by default -- trusted networks only. Set with `setx PIECES_LISTEN_ALL true` on Windows.
+
 Example:
 
 ```bash

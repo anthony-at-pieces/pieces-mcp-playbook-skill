@@ -2,6 +2,17 @@
 
 All notable changes to the Pieces MCP Playbook skill are documented here.
 
+## v4.1.0 (July 17, 2026)
+
+### Native LAN binding via PIECES_LISTEN_ALL
+
+Documented the native alternative to the `netsh` port proxy for reaching Pieces MCP from another machine. Setting `PIECES_LISTEN_ALL=true` on the Pieces host and fully restarting PiecesOS makes `os_server` bind `0.0.0.0:39300` instead of `127.0.0.1`.
+
+- Verified against live `pieces-app/os_server` source: `os.dart` and `os_internal_server.dart` read the flag at runtime (`InternetAddress.anyIPv4` when `true`, else `loopbackIPv4`). Unlike `SKIP_AUTHENTICATION` (upgraded to a compile-time constant), `PIECES_LISTEN_ALL` was intentionally left runtime, so no rebuild is needed.
+- Presented as the preferred LAN method (no proxy, no stale socket rules); the port proxy stays documented as the no-restart / no-env-change fallback.
+- Security caveat flagged in every location: this exposes the entire PiecesOS HTTP API on the LAN, and the local API has no auth by default -- trusted networks only.
+- Updated: `SKILL.md` (LAN network note + Troubleshooting #4), `references/MCP_ENDPOINTS.md` (binding note), `references/PREREQS.md` (new PiecesOS-side env var entry). Ref: https://github.com/pieces-app/os_server/issues/2009.
+
 ## v4.0.0 (July 11, 2026)
 
 ### Scripts rewritten: the SSE 400 "Missing sessionId query parameter" fix
